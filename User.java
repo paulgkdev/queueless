@@ -2,70 +2,85 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Base64;
 
-/** A staff account (Faculty Member, Clinic Staff, or Administrator). Students do not need an account. */
-public class User {
-    public enum Role {
-        ADMIN("Administrator", "All departments"),
-        FACULTY("Faculty Member", "Faculty Office"),
-        CLINIC("Clinic Staff", "Clinic");
+/**
+ * ABSTRACTION: User is an abstract class. You cannot create a plain "User",
+ * only one of its kinds (Administrator, ClinicStaff, FacultyStaff).
+ * Students do not need an account.
+ */
+public abstract class User {
+
+    /** The two service desks. Each ticket belongs to one desk. */
+    public enum Department {
+        CLINIC("Clinic"),
+        FACULTY("Faculty Office");
 
         private final String label;
-        private final String departmentName;
 
-        Role(String label, String departmentName) {
-            this.label = label;
-            this.departmentName = departmentName;
-        }
+        Department(String label) { this.label = label; }
 
-        public String getDepartmentName() { return departmentName; }
+        public String getLabel() { return label; }
 
         @Override
         public String toString() { return label; }
     }
 
+    // ENCAPSULATION: all data is private, it is only reachable through methods.
     private final String username;
-    private String fullName;
-    private Role role;
-    private boolean active;
-    private String passwordHash;
+    private final String fullName;
+    private final String passwordHash;   // the real password is never stored
 
-    public User(String username, String fullName, Role role, boolean active, String passwordHash) {
+    protected User(String username, String fullName, String password) {
         this.username = username;
         this.fullName = fullName;
-        this.role = role;
-        this.active = active;
-        this.passwordHash = passwordHash;
+        this.passwordHash = hash(password);
     }
 
-    /** Passwords are never stored as plain text. */
-    public static String hash(String password) {
+    // Scrambles the password (SHA-256) so it is not stored as plain text.
+    private static String hash(String password) {
         try {
-            byte[] d = MessageDigest.getInstance("SHA-256")
-                    .digest(("queue-salt:" + password).getBytes(StandardCharsets.UTF_8));
-            return Base64.getEncoder().encodeToString(d);
+            byte[] bytes = MessageDigest.getInstance("SHA-256").digest(password.getBytes(StandardCharsets.UTF_8));
+            return Base64.getEncoder().encodeToString(bytes);
         } catch (Exception e) {
             throw new IllegalStateException(e);
         }
     }
 
     public boolean checkPassword(String password) { return passwordHash.equals(hash(password)); }
-    public void setPassword(String password) { this.passwordHash = hash(password); }
-
-    public String toLine() {
-        return String.join(",", username, passwordHash, fullName.replace(",", " "), role.name(), "" + active);
-    }
-
-    public static User fromLine(String line) {
-        String[] f = line.split(",", -1);
-        return new User(f[0], f[2], Role.valueOf(f[3]), Boolean.parseBoolean(f[4]), f[1]);
-    }
 
     public String getUsername() { return username; }
     public String getFullName() { return fullName; }
-    public void setFullName(String n) { this.fullName = n; }
-    public Role getRole() { return role; }
-    public void setRole(Role r) { this.role = r; }
-    public boolean isActive() { return active; }
-    public void setActive(boolean a) { this.active = a; }
-    public boolean isAdmin() { return role == Role.ADMIN; }
+
+    // ABSTRACT METHODS: every kind of user must answer these in its own way.
+    public abstract String getTitle();
+    public abstract Department[] getDesks();      // the desks this user may serve
+
+    // ===================== INHERITANCE + POLYMORPHISM =====================
+    // Each subclass extends User and overrides the abstract methods.
+
+    /** The administrator can serve either desk. */
+    public static class Administrator extends User {
+        public Administrator(String username, String fullName, String password) {
+            super(username, fullName, password);
+        }
+        @Override public String getTitle() { return "Administrator"; }
+        @Override public Department[] getDesks() { return new Department[] { Department.CLINIC, Department.FACULTY }; }
+    }
+
+    /** Clinic staff serve the clinic only. */
+    public static class ClinicStaff extends User {
+        public ClinicStaff(String username, String fullName, String password) {
+            super(username, fullName, password);
+        }
+        @Override public String getTitle() { return "Clinic Staff"; }
+        @Override public Department[] getDesks() { return new Department[] { Department.CLINIC }; }
+    }
+
+    /** Faculty members serve the faculty office only. */
+    public static class FacultyStaff extends User {
+        public FacultyStaff(String username, String fullName, String password) {
+            super(username, fullName, password);
+        }
+        @Override public String getTitle() { return "Faculty Member"; }
+        @Override public Department[] getDesks() { return new Department[] { Department.FACULTY }; }
+    }
 }
